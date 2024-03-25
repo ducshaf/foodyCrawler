@@ -1,25 +1,24 @@
 import gc
 import json
+import logging
 import re
+import threading
 from collections import OrderedDict
-from concurrent.futures import ThreadPoolExecutor
-
-import numpy as np
-import pandas as pd
 from time import sleep
 from typing import List, Union
+
+import pandas as pd
+from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.by import By
+from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.select import Select
 from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.common.by import By
-from selenium.webdriver.remote.webelement import WebElement
-from glob import glob
-import logging
 from tqdm import tqdm
-from bs4 import BeautifulSoup
+
 from common_utils import CommonUtils
 
 
@@ -336,13 +335,71 @@ class Crawler:
 
         for res in res_list[530:]:
             try:
-                crawler.get_comment(driver, 'https://www.foody.vn' + res['DetailUrl'])
+                crawler.get_comment(driver, 'https://www.foody.vn' + res['DetailUrl'], 21)
             except Exception as e:
                 logging.error(str(e) + " at https://www.foody.vn" + res['DetailUrl'])
 
         driver.quit()
 
-    def get_comment(self, driver, url):
+
+    def create_multi_drivers(self, n):
+        drivers = []
+        for i in range(n):
+            options = webdriver.ChromeOptions()
+            options.add_argument('--log-level=3')
+            options.add_argument('--ignore-certificate-errors')
+            options.add_argument('--ignore-ssl-errors')
+            options.add_argument('--ignore-certificate-errors-spki-list')
+            options.add_argument('--blink-settings=imagesEnabled=false')
+            # Experiment with json xhr
+            options.set_capability('goog:loggingPrefs', {'performance': 'ALL'})
+            options.add_experimental_option('excludeSwitches', ['enable-logging'])
+
+            options.page_load_strategy = 'none'
+
+            service = Service()
+            driver = webdriver.Chrome(service=service, options=options)
+            driver.maximize_window()
+            drivers.append(driver)
+        return drivers
+
+
+    def go_get_review_multi(self):
+        drivers = self.create_multi_drivers(4)
+
+        files = []
+        for f in [22, 23, 24, 25]:
+            F = open('results/in_218_' + str(f) + '.jl', encoding='utf8')
+            res_list = [json.loads(line) for line in F]
+            files.append(res_list)
+            F.close()
+            del F
+        gc.collect()
+
+        def open_multi_browsers(driver):
+            driver.get(self.HOMED_URL)
+            sleep(4)
+
+        for driver in drivers:
+            t = threading.Thread(target=open_multi_browsers, args=(driver,))
+            t.start()
+        sleep(10)
+
+        def go_get_review_(driver, res_list, district):
+            for res in res_list:
+                try:
+                    crawler.get_comment(driver, 'https://www.foody.vn' + res['DetailUrl'], district)
+                except Exception as e:
+                    logging.error(str(e) + " at https://www.foody.vn" + res['DetailUrl'])
+
+            driver.quit()
+
+        # 600/4 = 150
+        inputs = list(zip(drivers, files, [22, 23, 24, 25]))
+        CommonUtils.process_list(inputs=inputs, func=go_get_review_, method='multi')
+
+
+    def get_comment(self, driver, url, district):
         driver.get(url)
 
         review_count_eles = self.wait_find(driver=driver,
@@ -431,7 +488,7 @@ class Crawler:
 
         def log_filter(log_):
             return (
-                # is an response
+                # is a response
                 log_["method"] == "Network.responseReceived"
                 # and json
                 and "json" in log_["params"]["response"]["mimeType"]
@@ -463,12 +520,16 @@ class Crawler:
                                  'Khong gian': ratings[4].text}
 
         # Save review data
-        f = open('results/review_data_21.json', 'r+')
+        f = open('results/review_data_' + str(district) + '.json', 'r+')
         f.seek(0, 2)
         position = f.tell() - 1
         f.seek(position)
         f.write(",{}]".format(json.dumps(review_data)))
         f.close()
+
+        # f = open('results/review_data_' + str(district) + '.json', 'w')
+        # f.write(json.dumps(review_data))
+        # f.close()
 
         del review_jsons
         del review_rating_eles
@@ -559,7 +620,7 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
     crawler = Crawler()
-    crawler.go_get_review()
+    crawler.go_get_review_multi()
 
     # res_df = pd.read_csv('results/restaurant_infos.csv', encoding='utf8')
     # res_df = res_df.dropna(how='any', subset=['url', 'title', 'location', 'Latitude', 'Longitude']).reset_index(drop=True)
