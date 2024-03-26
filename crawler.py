@@ -384,8 +384,8 @@ class Crawler:
             t = threading.Thread(target=open_multi_browsers, args=(driver,))
             t.start()
         sleep(10)
-
-        start = [360, 180, 296, 380]
+        # TODO: 25-594
+        start = [360, 180, 296, 594]
         district = [22, 23, 24, 25]
 
         def go_get_review_(driver, res_list, district, start):
