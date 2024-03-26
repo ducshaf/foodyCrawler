@@ -334,7 +334,7 @@ class Crawler:
         del F
         gc.collect()
 
-        for res in res_list[530:]:
+        for res in res_list[353:]:
             try:
                 crawler.get_comment(driver, 'https://www.foody.vn' + res['DetailUrl'])
             except Exception as e:
@@ -375,11 +375,12 @@ class Crawler:
                     review_rating_eles.append(rating_ele)
 
         show_more = True
-        # Infinite scroll
-        while 1:
+        # Scroll 2 times
+        for i in range(2):
             review_item_eles = self.wait_find(driver=driver,
                                               selector_str="review-item",
                                               selector_type='class', num_ele='many')
+
             self.scroll_to_bottom(driver)
             sleep(self.SCROLL_PAUSE_TIME)
 
@@ -463,6 +464,9 @@ class Crawler:
                                  'Khong gian': ratings[4].text}
 
         # Save review data
+        # f = open('results/review_data_21.json', 'w')
+        # f.write(json.dumps(review_data))
+        # f.close()
         f = open('results/review_data_21.json', 'r+')
         f.seek(0, 2)
         position = f.tell() - 1
