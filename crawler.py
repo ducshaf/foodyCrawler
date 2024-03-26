@@ -385,8 +385,11 @@ class Crawler:
             t.start()
         sleep(10)
 
-        def go_get_review_(driver, res_list, district):
-            for res in res_list:
+        start = [360, 180, 296, 380]
+        district = [22, 23, 24, 25]
+
+        def go_get_review_(driver, res_list, district, start):
+            for res in res_list[start:]:
                 try:
                     crawler.get_comment(driver, 'https://www.foody.vn' + res['DetailUrl'], district)
                 except Exception as e:
@@ -395,7 +398,7 @@ class Crawler:
             driver.quit()
 
         # 600/4 = 150
-        inputs = list(zip(drivers, files, [22, 23, 24, 25]))
+        inputs = list(zip(drivers, files, district, start))
         CommonUtils.process_list(inputs=inputs, func=go_get_review_, method='multi')
 
 
@@ -432,11 +435,12 @@ class Crawler:
                     review_rating_eles.append(rating_ele)
 
         show_more = True
-        # Infinite scroll
-        while 1:
+        # Scroll 2 times
+        for i in range(2):
             review_item_eles = self.wait_find(driver=driver,
                                               selector_str="review-item",
                                               selector_type='class', num_ele='many')
+
             self.scroll_to_bottom(driver)
             sleep(self.SCROLL_PAUSE_TIME)
 
