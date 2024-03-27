@@ -3,7 +3,7 @@ import json
 import re
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
-
+from iteration_utilities import unique_everseen
 import numpy as np
 import pandas as pd
 from time import sleep
@@ -328,13 +328,13 @@ class Crawler:
         self.login(driver)
         sleep(5)
 
-        F = open('results/in_218_21.jl', encoding='utf8')
+        F = open('results/in_218_26.jl', encoding='utf8')
         res_list = [json.loads(line) for line in F]
         F.close()
         del F
         gc.collect()
 
-        for res in res_list[353:]:
+        for res in res_list[32:]:
             try:
                 crawler.get_comment(driver, 'https://www.foody.vn' + res['DetailUrl'])
             except Exception as e:
@@ -344,6 +344,9 @@ class Crawler:
 
     def get_comment(self, driver, url):
         driver.get(url)
+        print(len(driver.find_elements(By.CSS_SELECTOR, 'div.errorpage')))
+        if (len(driver.find_elements(By.CSS_SELECTOR, 'div.errorpage')) != 0):
+            return
 
         review_count_eles = self.wait_find(driver=driver,
                                       selector_str='div.ratings-boxes > div.summary > b',
@@ -353,26 +356,26 @@ class Crawler:
         if review_count_eles is None:
             return
 
-        review_rating_eles: List[WebElement] = []
-        def get_review_ratings(driver: webdriver.Chrome):
-            hover_eles = self.wait_find(driver=driver,
-                                        selector_str='div.review-user.fd-clearbox.ng-scope > div > div.review-points',
-                                        selector_type='css', num_ele='many')
+        def get_review_ratings(driver: webdriver.Chrome, review_data):
+            while 1:
+                hover_eles = self.wait_find(driver=driver,
+                                            selector_str='div.review-user.fd-clearbox.ng-scope > div > div.review-points',
+                                            selector_type='css', num_ele='many')
 
-            if hover_eles is not None:
-                for _e in hover_eles[len(review_rating_eles):]:
-                    while 1:
-                        ActionChains(driver).move_to_element(_e).perform()
-                        sleep(0.5)
+                if len(hover_eles) == len(review_data):
+                    for e in hover_eles:
+                        while 1:
+                            ActionChains(driver).move_to_element(e).perform()
+                            sleep(0.75)
 
-                        rating_ele = self.wait_find(driver=driver,
-                                                    selector_str="#fdDlgReviewRating",
-                                                    selector_type='css', num_ele='one')
+                            rating_ele = self.wait_find(driver=driver,
+                                                        selector_str="#fdDlgReviewRating",
+                                                        selector_type='css', num_ele='one')
 
-                        if rating_ele is not None:
-                            break
+                            if rating_ele is not None:
+                                break
+                    break
 
-                    review_rating_eles.append(rating_ele)
 
         show_more = True
         # Scroll 2 times
@@ -387,7 +390,7 @@ class Crawler:
             more_ele = self.wait_find(driver=driver,
                                       selector_str="div.foody-box-review.ng-scope > div.pn-loadmore.fd-clearbox.ng-scope > a > label",
                                       selector_type='css', num_ele='one')
-            if (more_ele):
+            if more_ele:
                 break
 
             if len(review_item_eles) == int(review_count):
@@ -397,25 +400,29 @@ class Crawler:
         # Click show more Review
         while show_more:
             more_eles = self.wait_find(driver=driver,
-                                       selector_str="fd-btn-more",
-                                       selector_type='class', num_ele='many')
+                                       selector_str="a.fd-btn-more > label",
+                                       selector_type='css', num_ele='many')
             more_ele = None
             for e in more_eles:
-                if e.accessible_name == 'Xem thêm bình luận':
+                if e.text == 'Xem thêm bình luận':
                     more_ele = e
                     break
 
-            if more_ele:
+
+            if more_ele is not None:
                 self.move_and_click(driver, more_ele)
                 sleep(0.5)
+                review_item_eles = self.wait_find(driver=driver,
+                                                  selector_str="review-item",
+                                                  selector_type='class', num_ele='many')
+
                 self.scroll_to_bottom(driver)
                 sleep(self.SCROLL_PAUSE_TIME)
+                # print('{eles}/{count}'.format(eles=len(review_item_eles), count=int(review_count)))
 
             if more_ele is None:
                 show_more = False
                 break
-
-            get_review_ratings(driver)
 
         review_jsons = []
         # Get inititial first 10 reviews from html
@@ -430,9 +437,9 @@ class Crawler:
         logs_raw = driver.get_log("performance")
         logs = [json.loads(lr["message"])["message"] for lr in logs_raw]
 
-        def log_filter(log_):
+        def filter_loadmore(log_):
             return (
-                # is an response
+                # is a response
                 log_["method"] == "Network.responseReceived"
                 # and json
                 and "json" in log_["params"]["response"]["mimeType"]
@@ -440,7 +447,18 @@ class Crawler:
                 and 'https://www.foody.vn/__get/Review/ResLoadMore' in log_["params"]["response"]["url"]
             )
 
-        for log in filter(log_filter, logs):
+        def filter_reviewinfo(log_):
+            return (
+                # is a response
+                log_["method"] == "Network.responseReceived"
+                # and json
+                and "json" in log_["params"]["response"]["mimeType"]
+                # and from GetReviewInfo API
+                and 'https://www.foody.vn/__get/Review/GetReviewInfo' in log_["params"]["response"]["url"]
+            )
+
+        log_loadmore = filter(filter_loadmore, logs)
+        for log in log_loadmore:
             request_id = log["params"]["requestId"]
             response = driver.execute_cdp_cmd("Network.getResponseBody",
                                               {"requestId": request_id})
@@ -454,20 +472,86 @@ class Crawler:
         for reviews in review_jsons:
             review_data.extend(self.parse_reviews(reviews))
 
-        # Concat detailed ratings
-        for i in range(len(review_rating_eles)):
-            ratings = review_rating_eles[i].find_elements(By.CSS_SELECTOR, 'tr > td > b')
-            review_data[i]['Ratings'] = {'Vi tri': ratings[0].text,
-                                 'Gia ca': ratings[1].text,
-                                 'Chat luong': ratings[2].text,
-                                 'Phuc vu': ratings[3].text,
-                                 'Khong gian': ratings[4].text}
+        # Start crawling detailed ratings, TODO: data missing
+        get_review_ratings(driver, review_data)
+
+        logs_raw = driver.get_log("performance")
+        logs = [json.loads(lr["message"])["message"] for lr in logs_raw]
+
+        rating_jsons = []
+        for log in filter(filter_reviewinfo, logs):
+            request_id = log["params"]["requestId"]
+            response = driver.execute_cdp_cmd("Network.getResponseBody",
+                                              {"requestId": request_id})
+
+            # Extract review info
+            body = response['body']
+            rating_jsons.append(body)
+
+        # Parse rating jsons
+        ratings = []
+        while 1:
+            for rating_json in rating_jsons:
+                ratings.append(self.parse_rating(rating_json))
+
+            if (len(review_data) > len(ratings)):
+                print('Getting missing data... {cur}/{all}'.format(cur=len(ratings), all=len(review_data)))
+                # Check for missing json
+                review_ids = [item['Id'] for item in review_data]
+                review_ids_rating = [item['Id'] for item in ratings]
+                missing_id = set(review_ids).difference(review_ids_rating)
+
+                # Find the missing elements
+                missing_eles = []
+                for id in missing_id:
+                    ele = driver.find_element(By.CSS_SELECTOR,
+                                              "div.review-points.ng-scope.green[data-review='review_{}']".format(id))
+                    missing_eles.append(ele.find_element(By.CSS_SELECTOR, 'span.ng-binding'))
+
+                # Hover to get the missing json
+                for e in missing_eles:
+                    while 1:
+                        ActionChains(driver).move_to_element(e).perform()
+                        sleep(0.75)
+
+                        rating_ele = self.wait_find(driver=driver,
+                                                    selector_str="#fdDlgReviewRating",
+                                                    selector_type='css', num_ele='one')
+
+                        if rating_ele is not None:
+                            break
+
+                # Extract and append to rating_jsons at the right location
+                logs_raw = driver.get_log("performance")
+                logs = [json.loads(lr["message"])["message"] for lr in logs_raw]
+
+                for log in filter(filter_reviewinfo, logs):
+                    request_id = log["params"]["requestId"]
+                    response = driver.execute_cdp_cmd("Network.getResponseBody",
+                                                      {"requestId": request_id})
+
+                    # Extract review info
+                    body = response['body']
+                    rating_jsons.append(body)
+
+            else:
+                break
+
+        # Join review_data and ratings
+        ratings = list(unique_everseen(ratings))
+        for i in range(len(review_data)):
+            r = None
+            for rate in ratings:
+                if rate['Id'] == review_data[i]['Id']:
+                    r = rate
+                    break
+            review_data[i]['Ratings'] = r
 
         # Save review data
-        # f = open('results/review_data_21.json', 'w')
+        # f = open('results/review_data_26.json', 'w')
         # f.write(json.dumps(review_data))
         # f.close()
-        f = open('results/review_data_21.json', 'r+')
+        f = open('results/review_data_26.json', 'r+')
         f.seek(0, 2)
         position = f.tell() - 1
         f.seek(position)
@@ -475,7 +559,6 @@ class Crawler:
         f.close()
 
         del review_jsons
-        del review_rating_eles
         del review_data
         del f
         gc.collect()
@@ -513,6 +596,16 @@ class Crawler:
 
         return review_data
 
+
+    def parse_rating(self, rating_json):
+        rating = json.loads(rating_json)
+        rates: dict = {'Id': rating['Id'],
+                       'Vi tri': rating['Position'],
+                       'Gia ca': rating['Price'],
+                       'Chat luong': rating['Food'],
+                       'Phuc vu': rating['Services'],
+                       'Khong gian': rating['Atmosphere']}
+        return rates
 
     def get_restaurant_details(self, driver, url: str):
         info: dict = {}
