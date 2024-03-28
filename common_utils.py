@@ -14,8 +14,8 @@ class CommonUtils:
         outputs: list = []
         if inputs:
             if method == 'multi':
-                with ThreadPool(4) as p:
-                    outputs = list(tqdm(p.starmap(func, inputs), total=len(inputs), desc=desc))
+                with mp.Pool(4) as p:
+                    outputs = p.starmap(func, inputs)
             elif method == 'single':
                 for input in tqdm(inputs, desc=desc):
                     outputs.append(func(input))

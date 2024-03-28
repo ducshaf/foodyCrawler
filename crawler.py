@@ -366,41 +366,42 @@ class Crawler:
 
 
     def go_get_review_multi(self):
-        drivers = self.create_multi_drivers(4)
+        # drivers = self.create_multi_drivers(4)
+        #
+        # def open_multi_browsers(driver):
+        #     driver.get(self.HOMED_URL)
+        #     sleep(2)
+        #
+        # for driver in drivers:
+        #     t = threading.Thread(target=open_multi_browsers, args=(driver,))
+        #     t.start()
+        # sleep(5)
 
-        files = []
-        for f in [22, 23, 24, 25]:
-            F = open('results/in_218_' + str(f) + '.jl', encoding='utf8')
-            res_list = [json.loads(line) for line in F]
-            files.append(res_list)
-            F.close()
-            del F
-        gc.collect()
-
-        def open_multi_browsers(driver):
-            driver.get(self.HOMED_URL)
-            sleep(2)
-
-        for driver in drivers:
-            t = threading.Thread(target=open_multi_browsers, args=(driver,))
-            t.start()
-        sleep(5)
-
-        start = [0, 0, 0, 0]
+        start = [125, 275, 28, 75]
         district = [22, 23, 24, 25]
 
-        def go_get_review_(driver, res_list, district, start):
-            for res in res_list[start:]:
-                try:
-                    crawler.get_comment(driver, 'https://www.foody.vn' + res['DetailUrl'], district)
-                except Exception as e:
-                    logging.error(str(e) + " at https://www.foody.vn" + res['DetailUrl'])
 
-            driver.quit()
+        inputs = list(zip(district, start))
+        CommonUtils.process_list(inputs=inputs, func=self.go_get_review_, method='multi')
 
-        # 600/4 = 150
-        inputs = list(zip(drivers, files, district, start))
-        CommonUtils.process_list(inputs=inputs, func=go_get_review_, method='multi')
+
+    def go_get_review_(self, district, start):
+        driver = self.create_driver()
+        driver.get(self.HOMED_URL)
+        sleep(5)
+
+        F = open('results/in_218_' + str(district) + '.jl', encoding='utf8')
+        res_list = [json.loads(line) for line in F]
+        F.close()
+        del F
+
+        for res in res_list[start:]:
+            try:
+                self.get_comment(driver, 'https://www.foody.vn' + res['DetailUrl'], district)
+            except Exception as e:
+                logging.error(str(e) + " at https://www.foody.vn" + res['DetailUrl'])
+
+        driver.quit()
 
 
     def get_comment(self, driver, url, district):
@@ -601,16 +602,17 @@ class Crawler:
             else:
                 break
 
-            # Join review_data and ratings
-            ratings = list(unique_everseen(ratings))
-            for i in range(len(review_data)):
-                r = None
-                for rate in ratings:
-                    if rate['Id'] == review_data[i]['Id']:
-                        r = rate
-                        break
-                review_data[i]['Ratings'] = r
+        # Join review_data and ratings
+        ratings = list(unique_everseen(ratings))
+        for i in range(len(review_data)):
+            r = None
+            for rate in ratings:
+                if rate['Id'] == review_data[i]['Id']:
+                    r = rate
+                    break
+            review_data[i]['Ratings'] = r
 
+        print('Save {num} from {url} to {district}'.format(num=len(review_data), url=url, district=district))
 
         # Save review data
         f = open('results/review_data_' + str(district) + '.json', 'r+')
