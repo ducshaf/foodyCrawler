@@ -420,24 +420,21 @@ class Crawler:
         review_count = review_count_eles[0].text
 
         def get_review_ratings(driver: webdriver.Chrome, review_data):
-            while 1:
                 hover_eles = self.wait_find(driver=driver,
                                             selector_str='div.review-user.fd-clearbox.ng-scope > div > div.review-points',
                                             selector_type='css', num_ele='many')
 
-                if len(hover_eles) == len(review_data):
-                    for e in hover_eles:
-                        while 1:
-                            ActionChains(driver).move_to_element(e).perform()
-                            sleep(0.75)
+                for e in hover_eles:
+                    while 1:
+                        ActionChains(driver).move_to_element(e).perform()
+                        sleep(0.5)
 
-                            rating_ele = self.wait_find(driver=driver,
-                                                        selector_str="#fdDlgReviewRating",
-                                                        selector_type='css', num_ele='one')
+                        rating_ele = self.wait_find(driver=driver,
+                                                    selector_str="#fdDlgReviewRating",
+                                                    selector_type='css', num_ele='one')
 
-                            if rating_ele is not None:
-                                break
-                    break
+                        if rating_ele is not None:
+                            break
 
 
         show_more = True
@@ -454,7 +451,10 @@ class Crawler:
                                       selector_str="div.foody-box-review.ng-scope > div.pn-loadmore.fd-clearbox.ng-scope > a > label",
                                       selector_type='css', num_ele='one')
             if more_ele:
+                show_more = True
                 break
+            else:
+                show_more = False
 
             if len(review_item_eles) == int(review_count):
                 show_more = False
@@ -482,7 +482,6 @@ class Crawler:
                 sleep(self.SCROLL_PAUSE_TIME)
 
             if more_ele is None:
-                show_more = False
                 break
 
         review_jsons = []
@@ -517,16 +516,16 @@ class Crawler:
                     # and from GetReviewInfo API
                     and 'https://www.foody.vn/__get/Review/GetReviewInfo' in log_["params"]["response"]["url"]
             )
+        if show_more:
+            log_loadmore = filter(filter_loadmore, logs)
+            for log in log_loadmore:
+                request_id = log["params"]["requestId"]
+                response = driver.execute_cdp_cmd("Network.getResponseBody",
+                                                  {"requestId": request_id})
 
-        log_loadmore = filter(filter_loadmore, logs)
-        for log in log_loadmore:
-            request_id = log["params"]["requestId"]
-            response = driver.execute_cdp_cmd("Network.getResponseBody",
-                                              {"requestId": request_id})
-
-            # Extract review info
-            body = response['body']
-            review_jsons.append(body)
+                # Extract review info
+                body = response['body']
+                review_jsons.append(body)
 
         # Parse review jsons
         review_data = []
@@ -558,8 +557,13 @@ class Crawler:
             for rating_json in rating_jsons:
                 ratings.append(self.parse_rating(rating_json))
 
-            if (len(review_data) > len(ratings)):
-                print('Getting missing data... {cur}/{all}'.format(cur=len(ratings), all=len(review_data)))
+            hover_eles = self.wait_find(driver=driver,
+                                        selector_str='div.review-user.fd-clearbox.ng-scope > div > div.review-points',
+                                        selector_type='css', num_ele='many')
+            hover_eles_count = len(hover_eles)
+
+            if (hover_eles_count > len(ratings)):
+                print('Getting missing data... {cur}/{all}'.format(cur=len(ratings), all=hover_eles_count))
                 # Check for missing json
                 review_ids = [item['Id'] for item in review_data]
                 review_ids_rating = [item['Id'] for item in ratings]
@@ -569,15 +573,15 @@ class Crawler:
                 missing_eles = []
                 for id in missing_id:
                     ele = driver.find_element(By.CSS_SELECTOR,
-                                              "div.review-points.ng-scope[data-review='review_{}']".format(
-                                                  id))
-                    missing_eles.append(ele.find_element(By.CSS_SELECTOR, 'span.ng-binding'))
+                                              "div.review-points.ng-scope[data-review='review_{}']".format(id))
+                    if len(ele) != 0:
+                        missing_eles.append(ele.find_element(By.CSS_SELECTOR, 'span.ng-binding'))
 
                 # Hover to get the missing json
                 for e in missing_eles:
                     while 1:
                         ActionChains(driver).move_to_element(e).perform()
-                        sleep(0.75)
+                        sleep(0.5)
 
                         rating_ele = self.wait_find(driver=driver,
                                                     selector_str="#fdDlgReviewRating",
@@ -631,6 +635,8 @@ class Crawler:
         del ratings
         del rating_jsons
         del f
+        del logs
+        del logs_raw
         gc.collect()
 
 
