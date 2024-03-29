@@ -1,25 +1,25 @@
 import gc
 import json
+import logging
 import re
+import threading
 from collections import OrderedDict
-from concurrent.futures import ThreadPoolExecutor
-from iteration_utilities import unique_everseen
-import numpy as np
-import pandas as pd
 from time import sleep
 from typing import List, Union
+
+import pandas as pd
+from bs4 import BeautifulSoup
+from iteration_utilities import unique_everseen
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.by import By
+from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.select import Select
 from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.common.by import By
-from selenium.webdriver.remote.webelement import WebElement
-from glob import glob
-import logging
 from tqdm import tqdm
-from bs4 import BeautifulSoup
+
 from common_utils import CommonUtils
 
 
@@ -328,50 +328,113 @@ class Crawler:
         self.login(driver)
         sleep(5)
 
-        F = open('results/in_218_29.jl', encoding='utf8')
+        F = open('results/in_218_21.jl', encoding='utf8')
         res_list = [json.loads(line) for line in F]
         F.close()
         del F
         gc.collect()
 
-        for res in res_list[206:]:
+        for res in res_list[530:]:
             try:
-                crawler.get_comment(driver, 'https://www.foody.vn' + res['DetailUrl'])
+                crawler.get_comment(driver, 'https://www.foody.vn' + res['DetailUrl'], 21)
             except Exception as e:
                 logging.error(str(e) + " at https://www.foody.vn" + res['DetailUrl'])
 
         driver.quit()
 
-    def get_comment(self, driver, url):
+
+    def create_multi_drivers(self, n):
+        drivers = []
+        for i in range(n):
+            options = webdriver.ChromeOptions()
+            options.add_argument('--log-level=3')
+            options.add_argument('--ignore-certificate-errors')
+            options.add_argument('--ignore-ssl-errors')
+            options.add_argument('--ignore-certificate-errors-spki-list')
+            options.add_argument('--blink-settings=imagesEnabled=false')
+            # Experiment with json xhr
+            options.set_capability('goog:loggingPrefs', {'performance': 'ALL'})
+            options.add_experimental_option('excludeSwitches', ['enable-logging'])
+
+            options.page_load_strategy = 'none'
+
+            service = Service()
+            driver = webdriver.Chrome(service=service, options=options)
+            driver.maximize_window()
+            drivers.append(driver)
+        return drivers
+
+
+    def go_get_review_multi(self):
+        # drivers = self.create_multi_drivers(4)
+        #
+        # def open_multi_browsers(driver):
+        #     driver.get(self.HOMED_URL)
+        #     sleep(2)
+        #
+        # for driver in drivers:
+        #     t = threading.Thread(target=open_multi_browsers, args=(driver,))
+        #     t.start()
+        # sleep(5)
+
+        start = [125, 275, 28, 75]
+        district = [22, 23, 24, 25]
+
+
+        inputs = list(zip(district, start))
+        CommonUtils.process_list(inputs=inputs, func=self.go_get_review_, method='multi')
+
+
+    def go_get_review_(self, district, start):
+        driver = self.create_driver()
+        driver.get(self.HOMED_URL)
+        sleep(5)
+
+        F = open('results/in_218_' + str(district) + '.jl', encoding='utf8')
+        res_list = [json.loads(line) for line in F]
+        F.close()
+        del F
+
+        for res in res_list[start:]:
+            try:
+                self.get_comment(driver, 'https://www.foody.vn' + res['DetailUrl'], district)
+            except Exception as e:
+                logging.error(str(e) + " at https://www.foody.vn" + res['DetailUrl'])
+
+        driver.quit()
+
+
+    def get_comment(self, driver, url, district):
         driver.get(url)
-        print(len(driver.find_elements(By.CSS_SELECTOR, 'div.errorpage')))
+        sleep(1)
+
+        # Check if Page error
         if (len(driver.find_elements(By.CSS_SELECTOR, 'div.errorpage')) != 0):
             return
 
-        review_count_eles = self.wait_find(driver=driver,
-                                      selector_str='div.ratings-boxes > div.summary > b',
-                                      selector_type='css', num_ele='one')
-        review_count = review_count_eles.text
-
-        if review_count_eles is None:
+        # Check to see if No review
+        review_count_eles = driver.find_elements(By.CSS_SELECTOR, 'div.ratings-boxes > div.summary > b')
+        if len(review_count_eles) == 0:
             return
 
+        review_count = review_count_eles[0].text
+
         def get_review_ratings(driver: webdriver.Chrome, review_data):
-            hover_eles = self.wait_find(driver=driver,
-                                        selector_str='div.review-user.fd-clearbox.ng-scope > div > div.review-points',
-                                        selector_type='css', num_ele='many')
+                hover_eles = self.wait_find(driver=driver,
+                                            selector_str='div.review-user.fd-clearbox.ng-scope > div > div.review-points',
+                                            selector_type='css', num_ele='many')
 
-            for e in hover_eles:
-                while 1:
-                    ActionChains(driver).move_to_element(e).perform()
-                    sleep(0.75)
+                for e in hover_eles:
+                    while 1:
+                        ActionChains(driver).move_to_element(e).perform()
+                        sleep(0.5)
 
-                    rating_ele = self.wait_find(driver=driver,
-                                                selector_str="#fdDlgReviewRating",
-                                                selector_type='css', num_ele='one')
+                        rating_ele = self.wait_find(driver=driver,
+                                                    selector_str="#fdDlgReviewRating",
+                                                    selector_type='css', num_ele='one')
 
-                    if rating_ele is not None:
-                        break
+                        if rating_ele is not None:
+                            break
 
 
         show_more = True
@@ -408,7 +471,6 @@ class Crawler:
                     more_ele = e
                     break
 
-
             if more_ele is not None:
                 self.move_and_click(driver, more_ele)
                 sleep(0.5)
@@ -418,7 +480,6 @@ class Crawler:
 
                 self.scroll_to_bottom(driver)
                 sleep(self.SCROLL_PAUSE_TIME)
-                # print('{eles}/{count}'.format(eles=len(review_item_eles), count=int(review_count)))
 
             if more_ele is None:
                 break
@@ -439,23 +500,22 @@ class Crawler:
         def filter_loadmore(log_):
             return (
                 # is a response
-                log_["method"] == "Network.responseReceived"
-                # and json
-                and "json" in log_["params"]["response"]["mimeType"]
-                # and from ResLoadMore API
-                and 'https://www.foody.vn/__get/Review/ResLoadMore' in log_["params"]["response"]["url"]
+                    log_["method"] == "Network.responseReceived"
+                    # and json
+                    and "json" in log_["params"]["response"]["mimeType"]
+                    # and from ResLoadMore API
+                    and 'https://www.foody.vn/__get/Review/ResLoadMore' in log_["params"]["response"]["url"]
             )
 
         def filter_reviewinfo(log_):
             return (
                 # is a response
-                log_["method"] == "Network.responseReceived"
-                # and json
-                and "json" in log_["params"]["response"]["mimeType"]
-                # and from GetReviewInfo API
-                and 'https://www.foody.vn/__get/Review/GetReviewInfo' in log_["params"]["response"]["url"]
+                    log_["method"] == "Network.responseReceived"
+                    # and json
+                    and "json" in log_["params"]["response"]["mimeType"]
+                    # and from GetReviewInfo API
+                    and 'https://www.foody.vn/__get/Review/GetReviewInfo' in log_["params"]["response"]["url"]
             )
-
         if show_more:
             log_loadmore = filter(filter_loadmore, logs)
             for log in log_loadmore:
@@ -467,13 +527,15 @@ class Crawler:
                 body = response['body']
                 review_jsons.append(body)
 
-
         # Parse review jsons
         review_data = []
         for reviews in review_jsons:
             review_data.extend(self.parse_reviews(reviews))
 
-        # Start crawling detailed ratings, TODO: data missing
+        print('Extracted {num} from {url}'.format(num=len(review_data), url=url))
+
+
+        # Start crawling detailed ratings
         get_review_ratings(driver, review_data)
 
         logs_raw = driver.get_log("performance")
@@ -510,16 +572,16 @@ class Crawler:
                 # Find the missing elements
                 missing_eles = []
                 for id in missing_id:
-                    ele = driver.find_elements(By.CSS_SELECTOR,
+                    ele = driver.find_element(By.CSS_SELECTOR,
                                               "div.review-points.ng-scope[data-review='review_{}']".format(id))
                     if len(ele) != 0:
-                        missing_eles.append(ele[0].find_element(By.CSS_SELECTOR, 'span.ng-binding'))
+                        missing_eles.append(ele.find_element(By.CSS_SELECTOR, 'span.ng-binding'))
 
                 # Hover to get the missing json
                 for e in missing_eles:
                     while 1:
                         ActionChains(driver).move_to_element(e).perform()
-                        sleep(0.75)
+                        sleep(0.5)
 
                         rating_ele = self.wait_find(driver=driver,
                                                     selector_str="#fdDlgReviewRating",
@@ -554,20 +616,27 @@ class Crawler:
                     break
             review_data[i]['Ratings'] = r
 
+        print('Save {num} from {url} to {district}'.format(num=len(review_data), url=url, district=district))
+
         # Save review data
-        # f = open('results/review_data_29.json', 'w')
-        # f.write(json.dumps(review_data))
-        # f.close()
-        f = open('results/review_data_29.json', 'r+')
+        f = open('results/review_data_' + str(district) + '.json', 'r+')
         f.seek(0, 2)
         position = f.tell() - 1
         f.seek(position)
         f.write(",{}]".format(json.dumps(review_data)))
         f.close()
 
+        # f = open('results/review_data_' + str(district) + '.json', 'w')
+        # f.write(json.dumps(review_data))
+        # f.close()
+
         del review_jsons
         del review_data
+        del ratings
+        del rating_jsons
         del f
+        del logs
+        del logs_raw
         gc.collect()
 
 
@@ -613,6 +682,7 @@ class Crawler:
                        'Phuc vu': rating['Services'],
                        'Khong gian': rating['Atmosphere']}
         return rates
+
 
     def get_restaurant_details(self, driver, url: str):
         info: dict = {}
@@ -663,7 +733,7 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
     crawler = Crawler()
-    crawler.go_get_review()
+    crawler.go_get_review_multi()
 
     # res_df = pd.read_csv('results/restaurant_infos.csv', encoding='utf8')
     # res_df = res_df.dropna(how='any', subset=['url', 'title', 'location', 'Latitude', 'Longitude']).reset_index(drop=True)
