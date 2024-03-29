@@ -328,13 +328,13 @@ class Crawler:
         self.login(driver)
         sleep(5)
 
-        F = open('results/in_218_26.jl', encoding='utf8')
+        F = open('results/in_218_28.jl', encoding='utf8')
         res_list = [json.loads(line) for line in F]
         F.close()
         del F
         gc.collect()
 
-        for res in res_list[32:]:
+        for res in res_list[206:]:
             try:
                 crawler.get_comment(driver, 'https://www.foody.vn' + res['DetailUrl'])
             except Exception as e:
@@ -357,24 +357,21 @@ class Crawler:
             return
 
         def get_review_ratings(driver: webdriver.Chrome, review_data):
-            while 1:
-                hover_eles = self.wait_find(driver=driver,
-                                            selector_str='div.review-user.fd-clearbox.ng-scope > div > div.review-points',
-                                            selector_type='css', num_ele='many')
+            hover_eles = self.wait_find(driver=driver,
+                                        selector_str='div.review-user.fd-clearbox.ng-scope > div > div.review-points',
+                                        selector_type='css', num_ele='many')
 
-                if len(hover_eles) == len(review_data):
-                    for e in hover_eles:
-                        while 1:
-                            ActionChains(driver).move_to_element(e).perform()
-                            sleep(0.75)
+            for e in hover_eles:
+                while 1:
+                    ActionChains(driver).move_to_element(e).perform()
+                    sleep(0.75)
 
-                            rating_ele = self.wait_find(driver=driver,
-                                                        selector_str="#fdDlgReviewRating",
-                                                        selector_type='css', num_ele='one')
+                    rating_ele = self.wait_find(driver=driver,
+                                                selector_str="#fdDlgReviewRating",
+                                                selector_type='css', num_ele='one')
 
-                            if rating_ele is not None:
-                                break
-                    break
+                    if rating_ele is not None:
+                        break
 
 
         show_more = True
@@ -391,7 +388,10 @@ class Crawler:
                                       selector_str="div.foody-box-review.ng-scope > div.pn-loadmore.fd-clearbox.ng-scope > a > label",
                                       selector_type='css', num_ele='one')
             if more_ele:
+                show_more = True
                 break
+            else:
+                show_more = False
 
             if len(review_item_eles) == int(review_count):
                 show_more = False
@@ -421,7 +421,6 @@ class Crawler:
                 # print('{eles}/{count}'.format(eles=len(review_item_eles), count=int(review_count)))
 
             if more_ele is None:
-                show_more = False
                 break
 
         review_jsons = []
@@ -457,15 +456,17 @@ class Crawler:
                 and 'https://www.foody.vn/__get/Review/GetReviewInfo' in log_["params"]["response"]["url"]
             )
 
-        log_loadmore = filter(filter_loadmore, logs)
-        for log in log_loadmore:
-            request_id = log["params"]["requestId"]
-            response = driver.execute_cdp_cmd("Network.getResponseBody",
-                                              {"requestId": request_id})
+        if show_more:
+            log_loadmore = filter(filter_loadmore, logs)
+            for log in log_loadmore:
+                request_id = log["params"]["requestId"]
+                response = driver.execute_cdp_cmd("Network.getResponseBody",
+                                                  {"requestId": request_id})
 
-            # Extract review info
-            body = response['body']
-            review_jsons.append(body)
+                # Extract review info
+                body = response['body']
+                review_jsons.append(body)
+
 
         # Parse review jsons
         review_data = []
@@ -494,8 +495,13 @@ class Crawler:
             for rating_json in rating_jsons:
                 ratings.append(self.parse_rating(rating_json))
 
-            if (len(review_data) > len(ratings)):
-                print('Getting missing data... {cur}/{all}'.format(cur=len(ratings), all=len(review_data)))
+            hover_eles = self.wait_find(driver=driver,
+                                        selector_str='div.review-user.fd-clearbox.ng-scope > div > div.review-points',
+                                        selector_type='css', num_ele='many')
+            hover_eles_count = len(hover_eles)
+
+            if (hover_eles_count > len(ratings)):
+                print('Getting missing data... {cur}/{all}'.format(cur=len(ratings), all=hover_eles_count))
                 # Check for missing json
                 review_ids = [item['Id'] for item in review_data]
                 review_ids_rating = [item['Id'] for item in ratings]
@@ -504,9 +510,10 @@ class Crawler:
                 # Find the missing elements
                 missing_eles = []
                 for id in missing_id:
-                    ele = driver.find_element(By.CSS_SELECTOR,
-                                              "div.review-points.ng-scope.green[data-review='review_{}']".format(id))
-                    missing_eles.append(ele.find_element(By.CSS_SELECTOR, 'span.ng-binding'))
+                    ele = driver.find_elements(By.CSS_SELECTOR,
+                                              "div.review-points.ng-scope[data-review='review_{}']".format(id))
+                    if len(ele) != 0:
+                        missing_eles.append(ele[0].find_element(By.CSS_SELECTOR, 'span.ng-binding'))
 
                 # Hover to get the missing json
                 for e in missing_eles:
@@ -548,10 +555,10 @@ class Crawler:
             review_data[i]['Ratings'] = r
 
         # Save review data
-        # f = open('results/review_data_26.json', 'w')
+        # f = open('results/review_data_28.json', 'w')
         # f.write(json.dumps(review_data))
         # f.close()
-        f = open('results/review_data_26.json', 'r+')
+        f = open('results/review_data_28.json', 'r+')
         f.seek(0, 2)
         position = f.tell() - 1
         f.seek(position)
