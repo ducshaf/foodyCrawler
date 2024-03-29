@@ -328,7 +328,7 @@ class Crawler:
         self.login(driver)
         sleep(5)
 
-        F = open('results/in_218_28.jl', encoding='utf8')
+        F = open('results/in_218_29.jl', encoding='utf8')
         res_list = [json.loads(line) for line in F]
         F.close()
         del F
@@ -555,10 +555,10 @@ class Crawler:
             review_data[i]['Ratings'] = r
 
         # Save review data
-        # f = open('results/review_data_28.json', 'w')
+        # f = open('results/review_data_29.json', 'w')
         # f.write(json.dumps(review_data))
         # f.close()
-        f = open('results/review_data_28.json', 'r+')
+        f = open('results/review_data_29.json', 'r+')
         f.seek(0, 2)
         position = f.tell() - 1
         f.seek(position)
