@@ -377,8 +377,8 @@ class Crawler:
         #     t.start()
         # sleep(5)
 
-        start = [0, 0, 0]
-        district = [688, 690, 945]
+        start = [0, 0, 0, 0]
+        district = [686, 685, 691, 692]
 
 
         inputs = list(zip(district, start))
@@ -406,7 +406,7 @@ class Crawler:
 
     def get_comment(self, driver, url, district):
         driver.get(url)
-        sleep(1)
+        sleep(2)
 
         # Check if Page error
         if (len(driver.find_elements(By.CSS_SELECTOR, 'div.errorpage')) != 0):
@@ -619,16 +619,16 @@ class Crawler:
         print('Save {num} from {url} to {district}'.format(num=len(review_data), url=url, district=district))
 
         # Save review data
-        # f = open('results/review_data_' + str(district) + '.json', 'r+')
-        # f.seek(0, 2)
-        # position = f.tell() - 1
-        # f.seek(position)
-        # f.write(",{}]".format(json.dumps(review_data)))
-        # f.close()
-
-        f = open('results/review_data_' + str(district) + '.json', 'w')
-        f.write(json.dumps(review_data))
+        f = open('results/review_data_' + str(district) + '.json', 'r+')
+        f.seek(0, 2)
+        position = f.tell() - 1
+        f.seek(position)
+        f.write(",{}]".format(json.dumps(review_data)))
         f.close()
+
+        # f = open('results/review_data_' + str(district) + '.json', 'w')
+        # f.write(json.dumps(review_data))
+        # f.close()
 
         del review_jsons
         del review_data
