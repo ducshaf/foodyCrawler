@@ -377,8 +377,8 @@ class Crawler:
         #     t.start()
         # sleep(5)
 
-        start = [125, 275, 28, 75]
-        district = [22, 23, 24, 25]
+        start = [0, 0, 0]
+        district = [688, 690, 945]
 
 
         inputs = list(zip(district, start))
@@ -427,7 +427,7 @@ class Crawler:
                 for e in hover_eles:
                     while 1:
                         ActionChains(driver).move_to_element(e).perform()
-                        sleep(0.5)
+                        sleep(0.75)
 
                         rating_ele = self.wait_find(driver=driver,
                                                     selector_str="#fdDlgReviewRating",
@@ -473,7 +473,7 @@ class Crawler:
 
             if more_ele is not None:
                 self.move_and_click(driver, more_ele)
-                sleep(0.5)
+                sleep(0.75)
                 review_item_eles = self.wait_find(driver=driver,
                                                   selector_str="review-item",
                                                   selector_type='class', num_ele='many')
@@ -572,7 +572,7 @@ class Crawler:
                 # Find the missing elements
                 missing_eles = []
                 for id in missing_id:
-                    ele = driver.find_element(By.CSS_SELECTOR,
+                    ele = driver.find_elements(By.CSS_SELECTOR,
                                               "div.review-points.ng-scope[data-review='review_{}']".format(id))
                     if len(ele) != 0:
                         missing_eles.append(ele.find_element(By.CSS_SELECTOR, 'span.ng-binding'))
@@ -581,7 +581,7 @@ class Crawler:
                 for e in missing_eles:
                     while 1:
                         ActionChains(driver).move_to_element(e).perform()
-                        sleep(0.5)
+                        sleep(0.75)
 
                         rating_ele = self.wait_find(driver=driver,
                                                     selector_str="#fdDlgReviewRating",
@@ -619,16 +619,16 @@ class Crawler:
         print('Save {num} from {url} to {district}'.format(num=len(review_data), url=url, district=district))
 
         # Save review data
-        f = open('results/review_data_' + str(district) + '.json', 'r+')
-        f.seek(0, 2)
-        position = f.tell() - 1
-        f.seek(position)
-        f.write(",{}]".format(json.dumps(review_data)))
-        f.close()
-
-        # f = open('results/review_data_' + str(district) + '.json', 'w')
-        # f.write(json.dumps(review_data))
+        # f = open('results/review_data_' + str(district) + '.json', 'r+')
+        # f.seek(0, 2)
+        # position = f.tell() - 1
+        # f.seek(position)
+        # f.write(",{}]".format(json.dumps(review_data)))
         # f.close()
+
+        f = open('results/review_data_' + str(district) + '.json', 'w')
+        f.write(json.dumps(review_data))
+        f.close()
 
         del review_jsons
         del review_data

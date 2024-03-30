@@ -14,7 +14,7 @@ class CommonUtils:
         outputs: list = []
         if inputs:
             if method == 'multi':
-                with mp.Pool(4) as p:
+                with mp.Pool(3) as p:
                     outputs = p.starmap(func, inputs)
             elif method == 'single':
                 for input in tqdm(inputs, desc=desc):
